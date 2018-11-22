@@ -13,7 +13,9 @@ import 'three/examples/js/shaders/DotScreenShader'
 import 'three/examples/js/shaders/LuminosityHighPassShader';
 import 'three/examples/js/postprocessing/UnrealBloomPass';
 
-import Sound from './Sound'
+import Sound from './Sound';
+
+import 'three/examples/js/loaders/OBJLoader';
 
 var speed = 0;
 var sinTimer  = 0;
@@ -21,10 +23,9 @@ var sinVal = 0;
 var sinAmplitude  = 0;
 var nbsin = 3;
 
-var musicStarted = false;
-
 var clock = new THREE.Clock();
 var delta = 0;
+
 export default class App {
 
     constructor() {
@@ -39,9 +40,9 @@ export default class App {
         this.container.appendChild( this.renderer.domElement );
 
         this.camera = new THREE.PerspectiveCamera( 120, window.innerWidth / window.innerHeight, 0.05, 1000 );
-        this.camera.position.z = 1;
+        this.camera.position.z = 0;
         this.camera.position.x = 0;
-        this.camera.position.y = 0.5;
+        this.camera.position.y = 51;
 
         this.scene = new THREE.Scene();
 
@@ -53,7 +54,7 @@ export default class App {
         var params = {
             exposure: 1,
             bloomStrength: 3,
-            bloomThreshold: 0.2,
+            bloomThreshold: 0.25,
             bloomRadius: 0.8
         };
 
@@ -75,8 +76,6 @@ export default class App {
         this.scene.fog = new THREE.Fog(0x281540,0,220);
         this.scene.background = new THREE.Color(0x281540);
 
-       
-
 
         for(let i = 0;i<50;i++){
             let building = new Building(getRandomPosX(),Math.random() * - 250,this.scene);
@@ -84,17 +83,23 @@ export default class App {
             building.genFloors();
         }
 
-
         this.car = new Car(this.scene,this.camera);
         this.road = new Road(this.scene,this.renderer);
+        this.ground = new Ground(this.scene,this.renderer);
+
+        this.obstacles = new Array();
     
         this.soundController.simpleBeat.set({
             onBeat: ()=>{
                 sinTimer = 0;
                 sinVal = 0;
+                this.obstacles.push(new Obstacle(this.scene));
             }
         });
         this.soundController.simpleBeat.on();
+
+
+
 
     	window.addEventListener('resize', this.onWindowResize.bind(this), false);
         this.onWindowResize();
@@ -103,7 +108,6 @@ export default class App {
     }
 
     render() {
-        let time = Date.now()/1000;
         delta = clock.getDelta();
 
         for(let i = 0;i<this.buildings.length;i++){
@@ -116,18 +120,20 @@ export default class App {
                 build.genFloors();
             }
         }
-        if(this.materialShader != null){
-            this.materialShader.uniforms.time.value = time;
-        }
 
-       // sinTimer -= Math.PI * 2  * 90/60 * clock.getDelta();
+        for(let i = 0;i<this.obstacles.length;i++){
+            this.obstacles[i].update();
+        }
 
         let duration = 90/60;
         sinVal = easeOutExpo(sinTimer,0 ,Math.PI * 2,duration);
         if(sinTimer < duration)
         sinTimer += delta;
         this.car.update();
-        this.road.update();
+        this.road.update(); 
+        this.ground.update();
+        if(this.car.mesh != null)
+            this.camera.position.set(this.car.mesh.position.x,this.car.mesh.position.y + 0.6,this.car.mesh.position.z + 1.2);
 
         this.composer.render();
     
@@ -157,14 +163,14 @@ class Road{
         this.geometry = new THREE.PlaneGeometry( 5, 250,1,250);
         this.material = new THREE.MeshBasicMaterial
         ({ 
-            color: 0xffcc00,
+            color: 0x00ccd1,
             map : texture,
         });
 
         this.road = new THREE.Mesh(this.geometry,this.material);
         meshFitUvMap(this.road);
         this.road.rotation.set(-Math.PI/2,0,0);
-        this.road.position.set(0,49,-125);
+        this.road.position.set(0,0,-125);
         scene.add(this.road);
 
         for(let i = 0;i<this.geometry.vertices.length;i++){
@@ -174,7 +180,7 @@ class Road{
     }
 
     update(){
-        this.material.map.offset.y += 0.1 * speed;
+        this.material.map.offset.y += 0.1 * speed * delta;
 
         for(let i = 0;i<this.geometry.vertices.length;i++){
             let value = this.geometry.vertices[i]._sin + sinVal;
@@ -184,34 +190,109 @@ class Road{
     }
 }
 
-class Car{
-    constructor(scene,camera){
-        this.inputs = new InputManager();
-        let g =  new THREE.BoxGeometry(0.2,0.1,0.5);
-        let  m = new THREE.MeshBasicMaterial({color:0x4d4d4d});
-        this.mesh = new THREE.Mesh(g,m);
-        this.mesh.position.set(0,49.5,-5);
-        scene.add(this.mesh);
-        this.mesh.add(camera);
-        this.momentum = 0;
+class Ground{
+    constructor(scene, renderer){
+        let texture = new THREE.TextureLoader().load("/grid.jpg");
+        texture.userData = {
+            fitTo : 10
+        };
+        texture.wrapS = THREE.RepeatWrapping;
+        texture.wrapT = THREE.RepeatWrapping;
+        texture.anisotropy = renderer.getMaxAnisotropy();
 
-        this.sin = Math.PI * 2 * (this.mesh.position.z/-250) * nbsin;
-        console.log("car",this.sin);
+        texture.magFilter = THREE.NearestFilter;
+        
+        this.geometry = new THREE.PlaneGeometry(1000, 250,1,1);
+        this.material = new THREE.MeshBasicMaterial
+        ({ 
+            color: 0xb000ff,
+            map : texture,
+        });
+
+        this.mesh = new THREE.Mesh(this.geometry,this.material);
+        meshFitUvMap(this.mesh);
+        this.mesh.rotation.set(-Math.PI/2,0,0);
+        this.mesh.position.set(0,-20,-125);
+        scene.add(this.mesh);
     }
 
     update(){
-        if(this.inputs.getKey(37)){
-            this.momentum = clamp(this.momentum - 100 * delta,-10,10);
-        }else if(this.inputs.getKey(39)){
-            this.momentum = clamp(this.momentum + 100 * delta,-10,10);
-        }else{
-            this.momentum -= this.momentum * 0.2;
+        this.material.map.offset.y += 0.1 * speed * delta;
+    }
+}
+
+class Obstacle{
+    constructor(scene){
+        let g =  new THREE.BoxGeometry( 1.66,10,1.66);
+        let m = new THREE.MeshBasicMaterial({color:0x000000});
+        this.mesh = new THREE.Mesh( g, m );
+        this.mesh.position.set(Math.random() * 5 - 2.5,0,-250)
+        scene.add(this.mesh);
+    }
+
+    update(){
+        this.mesh.position.z += 20 * delta;
+    }
+}
+
+class Car{
+    constructor(scene){
+        var loader = new THREE.OBJLoader();
+
+        loader.load('./car.obj',(obj)=>{
+            obj.scale.set(0.02,0.02,0.02);
+            obj.rotation.y = Math.PI;
+            let texture = new THREE.TextureLoader().load("car.png");
+
+            let mat = new THREE.MeshStandardMaterial({
+                map: texture,
+                roughness: .3, 
+                metalness: 0.5
+
+            });
+
+
+            obj.traverse( function ( node ) {
+
+                if ( node.isMesh ) node.material = mat;
+        
+            } );
+
+            this.mesh = obj;
+            scene.add(this.mesh);
+            this.mesh.position.set(0,51,-5);
+
+            
+            let pointLight = new THREE.PointLight(0xff0000,2,10);
+            this.mesh.add(pointLight);
+            pointLight.position.y = 52;
+            
+            this.sin = Math.PI * 2 * (this.mesh.position.z/-250) * nbsin;
+        });
+
+        this.inputs = new InputManager();
+
+        this.momentum = 0;
+
+    }
+
+    update(){
+        if(this.mesh != null){
+            if(this.inputs.getKey(37)){
+                this.momentum = clamp(this.momentum - 50 * delta,-10,10);
+            }else if(this.inputs.getKey(39)){
+                this.momentum = clamp(this.momentum + 50 * delta,-10,10);
+            }else{
+                this.momentum -= this.momentum * 0.1;
+            }
+
+            this.mesh.rotation.y = Math.PI - Math.PI/180  * 10 * (this.momentum/10);
+            this.mesh.rotation.z = Math.PI/180  * 15 * (this.momentum/10);
+
+            this.mesh.position.x = clamp(this.mesh.position.x + this.momentum * delta,-2.3,2.3);
+
+            this.mesh.position.y = 0.5 + Math.sin(this.sin + sinVal) * sinAmplitude;
         }
-        console.log(this.momentum);
-
-        this.mesh.position.x = clamp(this.mesh.position.x + this.momentum * delta,-2.3,2.3);
-
-        this.mesh.position.y = 49 + Math.sin(this.sin + sinVal) * sinAmplitude;
     }
 }
 
@@ -219,8 +300,8 @@ class Building{
     constructor(x,y,scene){
         this.group = new THREE.Group(); 
         this.group.position.set(x,0,y);
-        this.height = 0;
-        this.rotspeed = 0.2 * Math.random() - 0.1;
+        this.height = -20;
+        this.rotspeed = 1 * Math.random() - 0.5;
         scene.add(this.group);
 
         let texture = new THREE.TextureLoader().load("/window.jpg");
@@ -239,8 +320,8 @@ class Building{
     }
 
     update(){
-        this.group.rotation.y += this.rotspeed;
-        this.group.position.z += 1 * speed;
+        this.group.rotation.y += this.rotspeed * delta;
+        this.group.position.z += speed * delta;
     }
 
     addFloor(){
@@ -248,7 +329,6 @@ class Building{
         let w = Math.random() * 10 + 10
         let g =  new THREE.BoxGeometry( w,h,w);
         let floor = new THREE.Mesh( g, this.material );
-       // meshFitUvMap(floor);
         floor.position.set(Math.random() * 4 - 2,this.height + h/2,Math.random() * 4 - 2);
         floor.rotation.y = Math.PI * 2 * Math.random();
         this.group.add(floor);
@@ -257,7 +337,7 @@ class Building{
     }
 
     genFloors(){
-        let nb = getRandomInt(10,30);
+        let nb = getRandomInt(10,25);
         for(let i = 0;i<nb;i++)
             this.addFloor();
     }
@@ -354,41 +434,39 @@ function meshFitUvMap(mesh) {
 
         this.simpleBeat = this.music.createBeat({});
 
-        /*this.kick = this.music.createKick({
-            onKick: (mag) => {
-                console.log('Kick!');
-            },
-            offKick: function (mag) {
-                console.log('no kick :(');
-            }
-        });
-
-        this.simpleBeat = this.music.createBeat({});
-
-        this.introHighKick = this.music.createKick({});
-
-        this.lowDrop = this.music.createKick({});
-
-        this.highDrop = this.music.createKick({});
-        */
-
-        this.music.onceAt("test",3.5, function () {
+        this.music.onceAt("start",3.5, function () {
             sinAmplitude = 1;
-            speed = 0.2;
-        }).after("test",24, function () {
+            speed = 20;
+        }).after("drop1",24, function () {
             
             sinAmplitude = 3;
-            speed = 1;
+            speed = 50;
             setTimeout(function(){
                 window.app.camera.fov = 130;
                 window.app.camera.updateProjectionMatrix();
             },0.5);
+        }).after("slow1",67, function () {
+            
+            sinAmplitude = 0;
+            speed = 30;
+        }).after("drop2",89, function () {       
+            sinAmplitude = 5;
+            speed = 80;
+        }).after("slow2",130.5, function () {       
+            sinAmplitude = 0;
+            speed = 10;
+        }).after("drop3",165, function () {       
+            sinAmplitude = 5;
+            speed = 130;
+        }).after("end",251.5, function () {       
+            sinAmplitude = 0;
+            speed = 0;
         })
 
     }
 
     playSound() {
-        this.music.play();
+       this.music.play();
     }
 }
 
