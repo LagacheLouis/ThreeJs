@@ -23,8 +23,13 @@ var sinVal = 0;
 var sinAmplitude  = 0;
 var nbsin = 3;
 
+var rotationTimer = 0;
+var rotationSpeed = 0;
+
 var clock = new THREE.Clock();
 var delta = 0;
+
+var score = 0;
 
 export default class App {
 
@@ -89,17 +94,17 @@ export default class App {
 
         this.obstacles = new Array();
     
+        this.opacity = 0;
+
         this.soundController.simpleBeat.set({
             onBeat: ()=>{
                 sinTimer = 0;
                 sinVal = 0;
+                rotationTimer = 0;
                 this.obstacles.push(new Obstacle(this.scene));
             }
         });
         this.soundController.simpleBeat.on();
-
-
-
 
     	window.addEventListener('resize', this.onWindowResize.bind(this), false);
         this.onWindowResize();
@@ -128,12 +133,42 @@ export default class App {
         let duration = 90/60;
         sinVal = easeOutExpo(sinTimer,0 ,Math.PI * 2,duration);
         if(sinTimer < duration)
-        sinTimer += delta;
+            sinTimer += delta;
+
+
+
+        rotationSpeed = easeOutExpo(sinTimer,1,-1,1.5);
+        if(rotationTimer < 1.5)
+            rotationTimer += delta;
+
         this.car.update();
         this.road.update(); 
         this.ground.update();
-        if(this.car.mesh != null)
+
+        score += 1000000/254 * delta;
+
+        if(this.car.mesh != null){
             this.camera.position.set(this.car.mesh.position.x,this.car.mesh.position.y + 0.6,this.car.mesh.position.z + 1.2);
+            for(let i =0;i<this.obstacles.length;i++){
+                if(this.obstacles[i].mesh.position.z > 0){
+                    this.scene.remove(this.obstacles[i].mesh);
+                    this.obstacles.splice(i,1);
+                }else if(this.obstacles[i].mesh.position.z > -20){
+                    if(new THREE.Vector2(this.obstacles[i].mesh.position.x,this.obstacles[i].mesh.position.z).distanceTo(new THREE.Vector2(this.car.mesh.position.x,this.car.mesh.position.y)) < 1.3 ){
+                        console.log("collision");
+                        score *= 0.5;
+                        this.opacity = 0.3;
+                        this.soundController.music.lowpass.frequency.value = 50;
+                        this.scene.remove(this.obstacles[i].mesh);
+                        this.obstacles.splice(i,1);
+                    }
+                }
+            }
+        }
+        document.getElementById("hit").style.opacity = this.opacity;
+        this.opacity -= this.opacity * 0.02;
+        this.soundController.music.lowpass.frequency.value += (5000 - this.soundController.music.lowpass.frequency.value) * 0.02;
+        document.getElementById("score").textContent = parseInt(score);
 
         this.composer.render();
     
@@ -202,7 +237,7 @@ class Ground{
 
         texture.magFilter = THREE.NearestFilter;
         
-        this.geometry = new THREE.PlaneGeometry(1000, 250,1,1);
+        this.geometry = new THREE.PlaneGeometry(1000, 250,1,512);
         this.material = new THREE.MeshBasicMaterial
         ({ 
             color: 0xb000ff,
@@ -217,7 +252,7 @@ class Ground{
     }
 
     update(){
-        this.material.map.offset.y += 0.1 * speed * delta;
+        this.material.map.offset.y += 0.1 * speed * delta; 
     }
 }
 
@@ -262,7 +297,6 @@ class Car{
             scene.add(this.mesh);
             this.mesh.position.set(0,51,-5);
 
-            
             let pointLight = new THREE.PointLight(0xff0000,2,10);
             this.mesh.add(pointLight);
             pointLight.position.y = 52;
@@ -301,7 +335,7 @@ class Building{
         this.group = new THREE.Group(); 
         this.group.position.set(x,0,y);
         this.height = -20;
-        this.rotspeed = 1 * Math.random() - 0.5;
+        this.rotspeed = Math.sign(Math.random() - 0.5) * (Math.random() * 5 + 5);
         scene.add(this.group);
 
         let texture = new THREE.TextureLoader().load("/window.jpg");
@@ -320,7 +354,7 @@ class Building{
     }
 
     update(){
-        this.group.rotation.y += this.rotspeed * delta;
+        this.group.rotation.y += this.rotspeed * delta * rotationSpeed;
         this.group.position.z += speed * delta;
     }
 
@@ -434,11 +468,12 @@ function meshFitUvMap(mesh) {
 
         this.simpleBeat = this.music.createBeat({});
 
+        this.rotationBeat = this.music.createBeat({factor:2});
+
         this.music.onceAt("start",3.5, function () {
             sinAmplitude = 1;
             speed = 20;
         }).after("drop1",24, function () {
-            
             sinAmplitude = 3;
             speed = 50;
             setTimeout(function(){
@@ -451,13 +486,13 @@ function meshFitUvMap(mesh) {
             speed = 30;
         }).after("drop2",89, function () {       
             sinAmplitude = 5;
-            speed = 80;
+            speed = 60;
         }).after("slow2",130.5, function () {       
             sinAmplitude = 0;
             speed = 10;
         }).after("drop3",165, function () {       
             sinAmplitude = 5;
-            speed = 130;
+            speed = 100;
         }).after("end",251.5, function () {       
             sinAmplitude = 0;
             speed = 0;

@@ -40,11 +40,20 @@ export default class Sound {
 
         // create gain
         this.gainNode = this.ctx.createGain();
-        this.gainNode.connect(this.ctx.destination);
+
+
+        this.lowpass = this.ctx.createBiquadFilter();
+        this.lowpass.frequency.value = 5000;
+      
 
         // create analyser
         this.analyserNode = this.ctx.createAnalyser();
-        this.analyserNode.connect(this.gainNode);
+        this.analyserNode.connect(this.lowpass);
+        this.lowpass.connect(this.gainNode);
+        this.gainNode.connect(this.ctx.destination);
+
+  
+  
         this.analyserNode.smoothingTimeConstant = .8;
         this.analyserNode.fftSize = 512;
         let bufferLength = this.analyserNode.frequencyBinCount;
@@ -390,7 +399,6 @@ class Beat {
     }
 
     on() {
-
         this.isOn = true;
     }
 

@@ -6,3 +6,20 @@ html, body {
 
     font-family: sans-serif;
 }
+#score{
+    color: white;
+    font-size: 30px;
+    position: fixed;
+    top: 25px;
+    width: 100vw;
+    text-align: center;
+}
+
+#hit{
+    background-color: red;
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+}
